@@ -31,6 +31,7 @@ public:
     };
 
     // Integration time: register value n → 2^n ms  (0→1ms … 14→16384ms)
+    // Note: value 0x0F wraps back to 1 ms (same as 0x00) per datasheet Fig 48
     enum class IntTime : uint8_t {
         TIME_1MS    = 0x00,
         TIME_2MS    = 0x01,
@@ -111,9 +112,12 @@ public:
     // Utility
     // -------------------------------------------------------------------------
 
-    // Convert raw counts to irradiance (µW/cm²).
-    // Requires knowledge of the current gain and integration time.
-    float rawToIrradiance(uint16_t raw, uint8_t channel);
+    // Convert raw counts to irradiance (µW/cm²) using the datasheet FSR tables.
+    // Formula: Ee = (raw / 65535) × FSR[gain][ch] × (T_REF_MS / tconv_ms)
+    // FSR values are specified at TIME=0x0A (1024 ms), CCLK=00b (1 MHz).
+    // EN_DIV is assumed disabled (applyConfig sets EN_DIV=0).
+    // channel: 0=UVA, 1=UVB, 2=UVC
+    float rawToIrradiance(uint16_t raw, uint8_t channel) const;
 
     bool softwareReset();
 
@@ -135,7 +139,7 @@ private:
     static constexpr uint8_t REG_OSR    = 0x00; // Operational State Register
     static constexpr uint8_t REG_AGEN   = 0x02; // Device ID / API generation
     static constexpr uint8_t REG_CREG1  = 0x06; // Gain + integration time
-    static constexpr uint8_t REG_CREG2  = 0x07; // En/disable channels, divider
+    static constexpr uint8_t REG_CREG2  = 0x07; // EN_TM, EN_DIV, DIV
     static constexpr uint8_t REG_CREG3  = 0x08; // Meas. mode, standby, RDYOD
     static constexpr uint8_t REG_BREAK  = 0x09; // Break time between cycles
     static constexpr uint8_t REG_EDGES  = 0x0A; // Number of SYN edges (SYND)
@@ -144,21 +148,21 @@ private:
     // -- Measurement-state registers (DOS = MEAS) --
     // Per datasheet Figure 54: addr 0=OSR/STATUS, 1=TEMP, 2=MRES1(UVA),
     //                          3=MRES2(UVB), 4=MRES3(UVC)
-    static constexpr uint8_t REG_STATUS    = 0x00; // STATUS (second byte at addr 0)
-    static constexpr uint8_t REG_TEMP_LSB  = 0x01; // TEMP result (16-bit, LSB first)
-    static constexpr uint8_t REG_UVA_LSB   = 0x02; // MRES1 – UVA result LSB
-    static constexpr uint8_t REG_UVB_LSB   = 0x03; // MRES2 – UVB result LSB
-    static constexpr uint8_t REG_UVC_LSB   = 0x04; // MRES3 – UVC result LSB
+    static constexpr uint8_t REG_STATUS   = 0x00; // STATUS (second byte at addr 0)
+    static constexpr uint8_t REG_TEMP_LSB = 0x01; // TEMP result (16-bit, LSB first)
+    static constexpr uint8_t REG_UVA_LSB  = 0x02; // MRES1 – UVA result LSB
+    static constexpr uint8_t REG_UVB_LSB  = 0x03; // MRES2 – UVB result LSB
+    static constexpr uint8_t REG_UVC_LSB  = 0x04; // MRES3 – UVC result LSB
 
     // OSR bit fields
-    static constexpr uint8_t OSR_DOS_CONF  = 0x02; // bits[2:0] → CONF state (010b)
-    static constexpr uint8_t OSR_DOS_MEAS  = 0x03; // bits[2:0] → MEAS state (011b)
-    static constexpr uint8_t OSR_SS        = (1u << 7); // Start/Stop
-    static constexpr uint8_t OSR_PD        = (1u << 6); // Power-down
-    // SW_RES must be written with a valid DOS to avoid NOP; use 0x0A (SW_RES|DOS_CONF)
-    static constexpr uint8_t OSR_SW_RES    = 0x0A;      // bit3=SW_RES, bits[1:0]=010b (CONF)
+    static constexpr uint8_t OSR_DOS_CONF = 0x02;       // bits[2:0] → CONF state (010b)
+    static constexpr uint8_t OSR_DOS_MEAS = 0x03;       // bits[2:0] → MEAS state (011b)
+    static constexpr uint8_t OSR_SS       = (1u << 7);  // Start/Stop
+    static constexpr uint8_t OSR_PD       = (1u << 6);  // Power-down
+    // SW_RES must be written with a valid DOS to avoid NOP; 0x0A = SW_RES|DOS_CONF
+    static constexpr uint8_t OSR_SW_RES   = 0x0A;       // bit3=SW_RES, bits[1:0]=010b
 
-    // STATUS register bit fields (read at addr 0x00 in MEAS state, second byte)
+    // STATUS register bit fields (second byte at addr 0x00 in MEAS state)
     static constexpr uint8_t STATUS_NDATA    = (1u << 3); // New data ready
     static constexpr uint8_t STATUS_NOTREADY = (1u << 2); // Inverted READY pin
 
@@ -166,10 +170,6 @@ private:
     static constexpr uint8_t CREG3_MMODE_SHIFT = 6;        // MMODE at bits [7:6]
     static constexpr uint8_t CREG3_RDYOD       = (1u << 3);
     static constexpr uint8_t CREG3_SB          = (1u << 4); // Standby
-
-    // Datasheet sensitivity constants (nW·s/cm² per count) – Table 8
-    // Index 0 = UVA, 1 = UVB, 2 = UVC
-    static constexpr float SENSITIVITY_UV[3] = { 0.000896f, 0.000950f, 0.000544f };
 
     // -------------------------------------------------------------------------
     // Private helpers
