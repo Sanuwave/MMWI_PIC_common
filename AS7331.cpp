@@ -5,8 +5,30 @@
 #include <cmath>
 #include <unistd.h>   // usleep
 
-// Sensitivity table definition (nW·s/cm² per count) – matches header declaration
-constexpr float AS7331::SENSITIVITY_UV[3];
+// -----------------------------------------------------------------------------
+// FSR lookup tables (µW/cm²) per channel A/B/C, indexed by GAIN register value
+// (0x00 = 2048x highest gain/lowest FSR ... 0x0B = 1x lowest gain/highest FSR)
+// Specified at CREG1:TIME = 0x0A (1024 ms), CREG3:CCLK = 00b (1 MHz)
+// Source: AS7331 datasheet Table Figure 48
+// -----------------------------------------------------------------------------
+static constexpr float FSR_A[12] = {
+      9.75f,   19.50f,   39.00f,   78.00f,
+    156.00f,  312.00f,  624.00f, 1248.00f,
+   2496.00f, 4992.00f, 9984.00f, 19968.00f
+};
+static constexpr float FSR_B[12] = {
+     12.75f,   25.50f,   51.00f,  102.00f,
+    204.00f,  408.00f,  816.00f, 1632.00f,
+   3264.00f, 6528.00f, 13056.00f, 26112.00f
+};
+static constexpr float FSR_C[12] = {
+      6.13f,   12.25f,   24.50f,   49.00f,
+     98.00f,  196.00f,  392.00f,  784.00f,
+   1568.00f, 3136.00f, 6272.00f, 12544.00f
+};
+
+// Reference integration time at which FSR values are defined (ms @ 1 MHz)
+static constexpr float T_REF_MS = 1024.0f;
 
 // -----------------------------------------------------------------------------
 // Singleton
@@ -46,14 +68,11 @@ bool AS7331::init(uint8_t i2cAddr, Gain gain, IntTime intTime, MeasMode mode) {
     }
 
     // Soft-reset: write OSR_SW_RES (0x0A = SW_RES|DOS_CONF) per datasheet Figure 46.
-    // Using 0x08 (SW_RES alone) leaves DOS=000b which is a NOP and the reset won't take.
     if (!writeReg(REG_OSR, OSR_SW_RES)) {
         std::cerr << "[AS7331] Software reset failed" << std::endl;
         return false;
     }
 
-    // After reset the OSR should read 0x02 (DOS=010b CONF, PD=0, SS=0, SW_RES reads 0).
-    // We mask off the PD bit since board power state may vary.
     uint8_t osr = 0;
     if (!readReg(REG_OSR, osr)) {
         std::cerr << "[AS7331] Failed to read OSR reg" << std::endl;
@@ -76,7 +95,6 @@ bool AS7331::init(uint8_t i2cAddr, Gain gain, IntTime intTime, MeasMode mode) {
 
 void AS7331::deinit() {
     std::lock_guard<std::mutex> lock(m_mutex);
-    // Power down the device (PD=1, DOS=CONF → 0x42)
     writeReg(REG_OSR, OSR_PD | OSR_DOS_CONF);
     m_initialised = false;
 }
@@ -129,15 +147,12 @@ AS7331::UvData AS7331::measure() {
         return result;
     }
 
-    // Must be in CONF state before triggering
     if (!enterConfState())  return result;
     if (!applyConfig())     return result;
 
-    // Switch to MEAS state and set SS=1 to start conversion (0x83 per datasheet Fig 46)
-    uint8_t osr = OSR_SS | OSR_DOS_MEAS;
-    if (!writeReg(REG_OSR, osr)) return result;
+    // Switch to MEAS state and trigger (SS=1, DOS=MEAS → 0x83, per datasheet Fig 46)
+    if (!writeReg(REG_OSR, OSR_SS | OSR_DOS_MEAS)) return result;
 
-    // Calculate worst-case conversion time (ms) and add 20% margin
     uint32_t intMs   = (1u << static_cast<uint8_t>(m_intTime));
     uint32_t timeout = intMs + (intMs / 5) + 10u;
 
@@ -154,12 +169,12 @@ AS7331::UvData AS7331::readResults() {
 
     uint16_t temp = 0, uva = 0, uvb = 0, uvc = 0;
 
-    if (!readWord(REG_TEMP_LSB, temp)) return result;  // addr 0x01 = TEMP
-    if (!readWord(REG_UVA_LSB,  uva))  return result;  // addr 0x02 = MRES1
-    if (!readWord(REG_UVB_LSB,  uvb))  return result;  // addr 0x03 = MRES2
-    if (!readWord(REG_UVC_LSB,  uvc))  return result;  // addr 0x04 = MRES3
+    if (!readWord(REG_TEMP_LSB, temp)) return result;
+    if (!readWord(REG_UVA_LSB,  uva))  return result;
+    if (!readWord(REG_UVB_LSB,  uvb))  return result;
+    if (!readWord(REG_UVC_LSB,  uvc))  return result;
 
-    // Temperature conversion: T(°C) = raw × 0.05 − 66.9  (AS7331 datasheet §7.4)
+    // Temperature: T(°C) = raw × 0.05 − 66.9  (AS7331 datasheet §7.4)
     result.tempC = static_cast<float>(temp) * 0.05f - 66.9f;
     result.uva   = uva;
     result.uvb   = uvb;
@@ -170,17 +185,43 @@ AS7331::UvData AS7331::readResults() {
 }
 
 // -----------------------------------------------------------------------------
-// Irradiance per channel conversion and channel sensitiveity constants
+// Irradiance conversion  (µW/cm²)
+//
+// Formula derived from AS7331 datasheet Figure 48:
+//
+//   FSR values are specified at TIME = 0x0A (1024 ms) and CCLK = 00b (1 MHz).
+//   For any other integration time the measurement range scales inversely:
+//
+//     Ee = (raw / 65535) × FSR[gain][ch] × (T_REF_MS / tconv_ms)
+//
+//   Where tconv_ms = 2^TIME_index ms  (at 1 MHz; CCLK divides this further
+//   but we fix CCLK = 00b in applyConfig, so no additional scale needed).
+//
+//   EN_DIV is not used (applyConfig sets EN_DIV=0), so div_factor = 1.
 // -----------------------------------------------------------------------------
 
-float AS7331::rawToIrradiance(uint16_t raw, uint8_t channel) {
+float AS7331::rawToIrradiance(uint16_t raw, uint8_t channel) const {
     if (channel > 2) return 0.0f;
 
-    // Gain register value 0x00 = 2048x, 0x0B = 1x.
-    // Actual gain factor = 2048 >> reg_value
-    float gainFactor = static_cast<float>(2048u >> static_cast<uint8_t>(m_gain));
-    float timeSec    = static_cast<float>(1u << static_cast<uint8_t>(m_intTime)) / 1000.0f;
-    return (static_cast<float>(raw) * SENSITIVITY_UV[channel]) / (gainFactor * timeSec);
+    uint8_t gainIdx = static_cast<uint8_t>(m_gain);
+    if (gainIdx > 11) gainIdx = 11;
+
+    // Select FSR for this channel
+    float fsr = 0.0f;
+    switch (channel) {
+        case 0:  fsr = FSR_A[gainIdx]; break;
+        case 1:  fsr = FSR_B[gainIdx]; break;
+        default: fsr = FSR_C[gainIdx]; break;
+    }
+
+    // Integration time in ms: tconv = 2^TIME_index
+    // TIME index 15 wraps back to 1 ms (same as index 0) per datasheet Table Figure 48
+    uint8_t tIdx  = static_cast<uint8_t>(m_intTime);
+    uint8_t tExp  = (tIdx == 15u) ? 0u : tIdx;
+    float tconvMs = static_cast<float>(1u << tExp);   // ms at 1 MHz (CCLK=00b)
+
+    // Ee (µW/cm²) = (raw / 65535) × FSR × (T_REF / tconv)
+    return (static_cast<float>(raw) / 65535.0f) * fsr * (T_REF_MS / tconvMs);
 }
 
 // -----------------------------------------------------------------------------
@@ -217,10 +258,11 @@ bool AS7331::applyConfig() {
                     (static_cast<uint8_t>(m_intTime) & 0x0F);
     if (!writeReg(REG_CREG1, creg1)) return false;
 
-    // CREG2: EN_TM=1 (bit6, enables temperature measurement), EN_DIV=0, DIV=0
+    // CREG2: EN_TM=1 (bit6), EN_DIV=0, DIV=0
+    // EN_DIV disabled – rawToIrradiance assumes no hardware divider
     if (!writeReg(REG_CREG2, 0x40)) return false;
 
-    // CREG3: MMODE[7:6] | RDYOD[3] – MMODE shift is 6 per datasheet Figure 50
+    // CREG3: MMODE[7:6] | RDYOD[3] – CCLK fixed at 00b (1 MHz)
     uint8_t creg3 = (static_cast<uint8_t>(m_measMode) << CREG3_MMODE_SHIFT)
                   | CREG3_RDYOD;
     if (!writeReg(REG_CREG3, creg3)) return false;
@@ -229,9 +271,7 @@ bool AS7331::applyConfig() {
 }
 
 bool AS7331::waitForDataReady(uint32_t timeoutMs) {
-    // Poll STATUS register bit 3 (NDATA) – set when new data is available.
-    // Note: reading STATUS resets NDATA, so a single poll per iteration is correct.
-    constexpr uint32_t POLL_INTERVAL_US = 1000u; // 1 ms
+    constexpr uint32_t POLL_INTERVAL_US = 1000u;
     uint32_t elapsed = 0;
 
     while (elapsed < timeoutMs) {
