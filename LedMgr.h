@@ -118,6 +118,8 @@ public:
     // For level mode, pulse width is determined by duration of GPIO line held high.
     bool enableHwStrobeEdgeMode(LedHwStrobeLineId line);
     bool enableHwStrobeLevelMode(LedHwStrobeLineId line, uint32_t pulseWidthUs);
+    void enableAllStrobeLines();
+    void disableAllStrobeLines();
     bool enableHwTorch(LedHwTorchLineId line);
     bool disableHwTorch(LedHwTorchLineId line);
     bool setTxMask(bool enable);

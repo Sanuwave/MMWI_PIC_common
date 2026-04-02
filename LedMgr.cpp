@@ -362,6 +362,22 @@ bool LedMgr::enableHwStrobeLevelMode(LedHwStrobeLineId line, uint32_t pulseWidth
     return true; 
 }
 
+void LedMgr::enableAllStrobeLines()
+{
+    for (uint8_t i = 0; i < static_cast<uint8_t>(LedHwStrobeLineId::NUM_HW_STROBE_LINE_IDS) -1; ++i) {
+        Gpio::GPIO gpio(m_strobeLineInfoTable[i], Gpio::Direction::OUTPUT);
+        gpio.set_high();
+    }
+}
+
+void LedMgr::disableAllStrobeLines()
+{
+    for (uint8_t i = 0; i < static_cast<uint8_t>(LedHwStrobeLineId::NUM_HW_STROBE_LINE_IDS) -1; ++i) {
+        Gpio::GPIO gpio(m_strobeLineInfoTable[i], Gpio::Direction::OUTPUT);
+        gpio.set_low();
+    }
+}
+
 bool LedMgr::enableHwTorch(LedHwTorchLineId line)
 {
     if (!m_initialized || line >= LedHwTorchLineId::NUM_HW_TORCH_LINE_IDS) {
