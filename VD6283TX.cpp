@@ -267,11 +267,12 @@ uint32_t VD6283TX::getSaturationLimit() const
     return static_cast<uint32_t>(SAT_LONG);
 }
 
-bool VD6283TX::isSaturated(uint16_t count16) const
+bool VD6283TX::isSaturated(uint32_t count24) const
 {
+    uint16_t count16 = static_cast<uint16_t>(count24 >> 8);
     return static_cast<uint32_t>(count16) >= getSaturationLimit();
 }
-
+    
 // =============================================================================
 // Flicker detection
 // =============================================================================

@@ -1,7 +1,6 @@
 #include "PCA9545A.h"
 #include "I2cMgr.h" 
 #include <iostream>
-#include <QDebug>
 
 PCA9545A::PCA9545A(I2cMgr* i2cMgr, uint8_t address)
     : m_i2cMgr(i2cMgr)

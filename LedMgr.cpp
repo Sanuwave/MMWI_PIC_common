@@ -3,7 +3,6 @@
 #include "PCA9545A.h"
 #include <iostream>
 #include <string>
-#include <QDebug>
 #include <unistd.h>
 #include <stdio.h>
 
@@ -343,7 +342,12 @@ bool LedMgr::setFlashTorchBrightness(LedId ledId, uint8_t brightness) {
     return true;    
 }
 
-bool LedMgr::enableHwStrobe(LedHwStrobeLineId line)
+bool LedMgr::enableHwStrobeEdgeMode(LedHwStrobeLineId line)
+{
+    return enableHwStrobeLevelMode(line, LedMgr::STROBE_PULSE_TIMEOUT_US);
+}
+
+bool LedMgr::enableHwStrobeLevelMode(LedHwStrobeLineId line, uint32_t pulseWidthUs)
 {
     if (!m_initialized || line >= LedHwStrobeLineId::NUM_HW_STROBE_LINE_IDS) {
         return false;
@@ -352,7 +356,7 @@ bool LedMgr::enableHwStrobe(LedHwStrobeLineId line)
     Gpio::GPIO gpioLine(m_strobeLineInfoTable[static_cast<uint8_t>(line)], 
                         Gpio::Direction::OUTPUT);
     gpioLine.set_high();
-    usleep(LedMgr::STROBE_PULSE_TIMEOUT_US);
+    usleep(pulseWidthUs);
     gpioLine.set_low();
 
     return true; 
@@ -418,7 +422,7 @@ bool LedMgr::isLedEnabled(LedId ledId) {
     return m_ledChannelInfoTable[static_cast<uint8_t>(ledId)].isEnabled;
 }
 
-bool LedMgr::setStrobeEnable(LedId ledId) {
+bool LedMgr::setStrobeEnable(LedId ledId, LedHwStrobeMode strobeMode) {
     std::lock_guard<std::mutex> lock(m_mutex);
     
     if (!m_initialized) {
@@ -429,8 +433,8 @@ bool LedMgr::setStrobeEnable(LedId ledId) {
         std::cerr << "LedMgr: Couldn't set Driver/Channel" << std::endl;
         return false;
     }
-    
-    return m_currentLedDriver->setStrobeEnable(m_ledChannel);
+    bool edgeMode = (strobeMode == LedHwStrobeMode::STROBE_MODE_EDGE);
+    return m_currentLedDriver->setStrobeEnable(m_ledChannel, edgeMode);
 }
 
 bool LedMgr::setTorchEnable(LedId ledId) {
@@ -529,7 +533,7 @@ bool LedMgr::resetLedStates() {
         bool isEnabled = false;
         m_currentI2cSwitchDriver->isChannelEnabled(m_ledChannelInfoTable[i].switchChannel, isEnabled);
         if (!isEnabled) {
-            qDebug() << "LedMgr: Failed to verify i2c switch to channel " << m_ledChannelInfoTable[i].switchChannel;
+            std::cerr << "LedMgr: Failed to verify i2c switch to channel " << static_cast<int>(m_ledChannelInfoTable[i].switchChannel) << std::endl;
             return false;
         }
 

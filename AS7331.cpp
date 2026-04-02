@@ -157,7 +157,6 @@ AS7331::UvData AS7331::measure() {
     uint32_t timeout = intMs + (intMs / 5) + 10u;
 
     if (!waitForDataReady(timeout)) {
-        std::cerr << "[AS7331] Measurement timeout" << std::endl;
         return result;
     }
 

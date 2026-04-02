@@ -28,7 +28,7 @@ public:
 
     static constexpr float    EXTIME_STEP_MS      = 1.6f;
     static constexpr uint16_t EXTIME_REG_MAX       = 0x3FF;
-    static constexpr uint16_t EXTIME_SAT_BOUNDARY  = 0x047;
+    static constexpr uint16_t EXTIME_SAT_BOUNDARY  = 0x046;
     static constexpr uint16_t SAT_SHORT_PER_STEP   = 910;
     static constexpr uint16_t SAT_LONG             = 65535;
 
@@ -170,7 +170,7 @@ public:
     // Saturation
     // -------------------------------------------------------------------------
     uint32_t getSaturationLimit() const;
-    bool     isSaturated(uint16_t count16) const;
+    bool     isSaturated(uint32_t count24) const;
 
     // -------------------------------------------------------------------------
     // Flicker detection

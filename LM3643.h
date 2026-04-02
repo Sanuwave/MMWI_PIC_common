@@ -66,7 +66,7 @@ public:
     
     // Advanced features
     bool setTxMask(bool enable); // TX event input mask
-    bool setStrobeEnable(LedChannel channel); // Hardware strobe
+    bool setStrobeEnable(LedChannel channel, bool isEdgeMode); // Hardware strobe
     bool setTorchEnable(LedChannel channel); // Hardware torch
     
 private:

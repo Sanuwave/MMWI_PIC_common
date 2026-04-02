@@ -1,7 +1,6 @@
 #include "LM3643.h"
 #include "I2cMgr.h"
 #include <iostream>
-#include <QDebug>
 
 LM3643::LM3643(I2cMgr* i2cMgr, uint8_t address)
     : m_i2cMgr(i2cMgr)
@@ -96,7 +95,6 @@ bool LM3643::setTorchBrightness(LedChannel channel, uint8_t brightness) {
                      writeRegister(REG_LED2_TORCH_BRIGHTNESS, level);
             break;
     }
-    qDebug() << "Set brightness to " << level;
     
     return success;
 }
@@ -228,8 +226,13 @@ bool LM3643::setTxMask(bool enable) {
     return updateEnableRegister();
 }
 
-bool LM3643::setStrobeEnable(LedChannel channel) {
-    m_enableReg |= (ENABLE_STROBE | ENABLE_EDGE);
+bool LM3643::setStrobeEnable(LedChannel channel, bool isEdgeMode) {
+    m_enableReg |= ENABLE_STROBE;
+    if (isEdgeMode) {
+        m_enableReg |= ENABLE_EDGE;
+    } else {
+        m_enableReg &= ~ENABLE_EDGE;
+    }
     // Enable the appropriate LED(s)
     switch (channel) {
         case LedChannel::LED1:

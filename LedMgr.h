@@ -75,6 +75,11 @@ public:
         NUM_HW_TORCH_LINE_IDS
     };
     
+    enum class LedHwStrobeMode : uint8_t {
+        STROBE_MODE_LEVEL = 0,   // Flash pulse width determined by duration of GPIO line held high
+        STROBE_MODE_EDGE = 1,    // Flash pulse width determined by physical strobe duration (GPIO line held high for at least pulse timeout duration)   
+        NUM_HW_STROBE_MODE_IDS
+    };
     // Singleton access
     static LedMgr& getInstance();
     
@@ -88,20 +93,15 @@ public:
     bool initialize();
     bool isInitialized() const;
     
-    // Individual LED torch control
+    // Individual LED torch control (S/W trigger)
     bool setTorchMode(LedId ledId);
     
-    // Individual LED flash control
+    // Individual LED flash control (S/W trigger)
     bool setFlashMode(LedId ledId);
     bool setFlashTimeout(LedId ledId, uint16_t timeout_ms);
 
     bool setFlashTorchBrightness(LedId ledId, uint8_t brightness);
 
-    // Pulse control
-    bool enableHwStrobe(LedHwStrobeLineId line);
-    bool enableHwTorch(LedHwTorchLineId line);
-    bool disableHwTorch(LedHwTorchLineId line);
-    
     // LED control
     bool turnOff(LedId ledId);
     bool resetLeds();
@@ -109,10 +109,26 @@ public:
     // LED state
     bool isLedEnabled(LedId ledId);
     
-    // Advanced features
-    bool setStrobeEnable(LedId ledId);
+    // H/W Trigger !!
+    bool setStrobeEnable(LedId ledId, LedHwStrobeMode strobeMode = LedHwStrobeMode::STROBE_MODE_EDGE);
     bool setTorchEnable(LedId ledId);
+
+    // Pulse control
+    // For edge mode, pulse width is determined by physical strobe duration. 
+    // For level mode, pulse width is determined by duration of GPIO line held high.
+    bool enableHwStrobeEdgeMode(LedHwStrobeLineId line);
+    bool enableHwStrobeLevelMode(LedHwStrobeLineId line, uint32_t pulseWidthUs);
+    bool enableHwTorch(LedHwTorchLineId line);
+    bool disableHwTorch(LedHwTorchLineId line);
     bool setTxMask(bool enable);
+
+    // Rick here's a suggested group of calls for the UVBF test:
+    // 1) For each led that is enabled (isLedEnabled()), turnOff() the LED
+    // 2) When user select an LED (or all), call setStrobeEnable() for that LED.
+    // 3) At the appropriate time, call enableHwStrobeLevelMode() with 
+    //    the appropriate timeout for the first 3 strobe lines (note the 4th is not functional)
+    // 4) Repeat as necessary
+    // 5) On exiting turnOff() any enabled LEDs to ensure they are off when the test finishes
     
 private:
     LedMgr();
