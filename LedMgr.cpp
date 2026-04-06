@@ -130,6 +130,7 @@ bool LedMgr::initialize() {
         // Ensure I2C is open
         if (!m_i2cMgr->open() ||!m_i2cMgr->isOpen()) {
             std::cerr << "LedMgr: I2C device could not open" << std::endl;
+            m_lastError = "LedMgr: I2C device could not open";
             return false;
         }
 
@@ -139,11 +140,13 @@ bool LedMgr::initialize() {
         
         // Initialize the i2c switch drivers
         if (!m_i2cSwitchDriver->init()) {
-            std::cerr << "LedMgr: Failed to initialize default PCA9545A driver" << std::endl;            
+            std::cerr << "LedMgr: Failed to initialize default PCA9545A driver" << std::endl;    
+            m_lastError = "LedMgr: Failed to initialize default PCA9545A driver";        
             return false;
         }
         if (!m_i2cSwitchDriverAlt->init()) {
             std::cerr << "LedMgr: Failed to initialize alt PCA9545A driver" << std::endl;            
+            m_lastError = "LedMgr: Failed to initialize alt PCA9545A driver";
             return false;
         }
         
@@ -186,16 +189,19 @@ bool LedMgr::initialize() {
         // Reset all LEDs
         if (!resetLedStates()) {
             std::cerr << "LedMgr: Failed to reset LEDs" << std::endl;
+            m_lastError = "LedMgr: Failed to reset LEDs";
             return false;
         }
         
         m_initialized = true;        
         
         std::cout << "LedMgr: Initialized successfully" << std::endl;
-        return true;;
+        m_lastError = "";
+        return true;
         
     } catch (const std::exception& e) {
-        std::cerr << "LedMgr: Exception during initialization: " << e.what() << std::endl;        
+        std::cerr << "LedMgr: Exception during initialization: " << e.what() << std::endl;       
+        m_lastError = std::string("LedMgr: Exception during initialization: ") + e.what(); 
         return false;
     }
 }
@@ -210,17 +216,20 @@ bool LedMgr::setTorchMode(LedId ledId) {
     
     if (!m_initialized) {
         std::cerr << "LedMgr: Not initialized" << std::endl;
+        m_lastError = "LedMgr: Not initialized";
         return false;
     }
 
     if (!setDriversAndChannel(ledId)) {
         std::cerr << "LedMgr: Couldn't set Driver/Channel" << std::endl;
+        m_lastError = "LedMgr: Couldn't set Driver/Channel";
         return false;
     }
     
     // Enable torch mode
     if (!m_currentLedDriver->enableTorch(m_ledChannel)) {
         std::cerr << "LedMgr: Failed to enable torch" << std::endl;
+        m_lastError = "LedMgr: Failed to enable torch";
         return false;
     }
     
@@ -232,17 +241,20 @@ bool LedMgr::setFlashMode(LedId ledId) {
     
     if (!m_initialized) {
         std::cerr << "LedMgr: Not initialized" << std::endl;
+        m_lastError = "LedMgr: Not initialized";
         return false;
     }
 
     if (!setDriversAndChannel(ledId)) {
         std::cerr << "LedMgr: Couldn't set Driver/Channel" << std::endl;
+        m_lastError = "LedMgr: Couldn't set Driver/Channel";
         return false;
     }
     
     // Enable flash mode
     if (!m_currentLedDriver->enableFlash(m_ledChannel)) {
         std::cerr << "LedMgr: Failed to enable flash" << std::endl;
+        m_lastError = "LedMgr: Failed to enable flash";
         return false;
     }
     
@@ -260,6 +272,7 @@ bool LedMgr::setFlashTimeout(LedId ledId, uint16_t timeout_ms) {
 
     if (!setDriversAndChannel(ledId)) {
         std::cerr << "LedMgr: Couldn't set Driver/Channel" << std::endl;
+        m_lastError = "LedMgr: Couldn't set Driver/Channel";
         return false;
     }
 
@@ -325,18 +338,21 @@ bool LedMgr::setFlashTorchBrightness(LedId ledId, uint8_t brightness) {
 
     if (!setDriversAndChannel(ledId)) {
         std::cerr << "LedMgr: Couldn't set Driver/Channel" << std::endl;
+        m_lastError = "LedMgr: Couldn't set Driver/Channel";
         return false;
     }
 
     // Set flash brightness
     if (!m_currentLedDriver->setFlashBrightness(m_ledChannel, brightness)) {
         std::cerr << "LedMgr: Failed to set flash brightness" << std::endl;
+        m_lastError = "LedMgr: Failed to set flash brightness";
         return false;
     }
 
     // Set torch brightness
     if (!m_currentLedDriver->setTorchBrightness(m_ledChannel, brightness)) {
         std::cerr << "LedMgr: Failed to set flash brightness" << std::endl;
+        m_lastError = "LedMgr: Failed to set flash brightness";
         return false;
     }
     return true;    
@@ -414,6 +430,7 @@ bool LedMgr::turnOff(LedId ledId) {
 
     if (!setDriversAndChannel(ledId)) {
         std::cerr << "LedMgr: Couldn't set Driver/Channel" << std::endl;
+        m_lastError = "LedMgr:Couldn't set Driver/Channel";
         return false;
     }
     
@@ -428,6 +445,7 @@ bool LedMgr::resetLeds() {
     std::lock_guard<std::mutex> lock(m_mutex);
     
     if (!m_initialized) {
+        m_lastError = "LedMgr: Not initialized";
         return false;
     }
 
@@ -447,6 +465,7 @@ bool LedMgr::setStrobeEnable(LedId ledId, LedHwStrobeMode strobeMode) {
 
     if (!setDriversAndChannel(ledId)) {
         std::cerr << "LedMgr: Couldn't set Driver/Channel" << std::endl;
+        m_lastError = "LedMgr: Couldn't set Driver/Channel";
         return false;
     }
     bool edgeMode = (strobeMode == LedHwStrobeMode::STROBE_MODE_EDGE);
@@ -462,6 +481,7 @@ bool LedMgr::setTorchEnable(LedId ledId) {
 
     if (!setDriversAndChannel(ledId)) {
         std::cerr << "LedMgr: Couldn't set Driver/Channel" << std::endl;
+        m_lastError = "LedMgr: Couldn't set Driver/Channel";
         return false;
     }
     
@@ -492,7 +512,8 @@ bool LedMgr::setDriversAndChannel(LedId ledId)
 
         //Select switch channel
         if (!m_currentI2cSwitchDriver->selectChannel(m_ledChannelInfoTable[tableIndex].switchChannel)) {
-                std::cerr << "LedMgr: Failed to select I2C Switch" << std::endl;                    
+                std::cerr << "LedMgr: Failed to select I2C Switch" << std::endl;       
+                m_lastError = "LedMgr: Failed to select I2C Switch";             
                 return false;
         }
                
@@ -506,9 +527,10 @@ bool LedMgr::setDriversAndChannel(LedId ledId)
     }
     else {
         std::cerr << "LedMgr: LED not enabled" << std::endl;
+        m_lastError = "LedMgr: LED not enabled";
     }
 
-    return true;;
+    return true;
 }
 bool LedMgr::resetLedStates() {
     // Loop through GPIO strobe/torch lines and set inactive (low)
@@ -542,6 +564,7 @@ bool LedMgr::resetLedStates() {
         //Select switch channel
         if (!m_currentI2cSwitchDriver->selectChannel(m_ledChannelInfoTable[i].switchChannel)) {
                 std::cerr << "LedMgr: Failed to select I2C Switch" << std::endl;
+                m_lastError = "LedMgr: Failed to select I2C Switch";
                 return false;
         }
         usleep(10 * 1000);            
@@ -550,6 +573,7 @@ bool LedMgr::resetLedStates() {
         m_currentI2cSwitchDriver->isChannelEnabled(m_ledChannelInfoTable[i].switchChannel, isEnabled);
         if (!isEnabled) {
             std::cerr << "LedMgr: Failed to verify i2c switch to channel " << static_cast<int>(m_ledChannelInfoTable[i].switchChannel) << std::endl;
+            m_lastError = "LedMgr: Failed to verify i2c switch to channel " + std::to_string(static_cast<int>(m_ledChannelInfoTable[i].switchChannel));
             return false;
         }
 

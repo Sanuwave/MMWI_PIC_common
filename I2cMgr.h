@@ -33,8 +33,9 @@ private:
     
     int m_fd;
     uint8_t m_currentAddress;
+    std::string m_devicePath; // RCF swap order for ctor init list
     Gpio::GPIO m_resetLine;
-    std::string m_devicePath;
+  
     mutable std::mutex m_mutex;    
 };
 

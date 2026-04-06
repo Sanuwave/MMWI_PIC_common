@@ -124,6 +124,7 @@ public:
     bool disableHwTorch(LedHwTorchLineId line);
     bool setTxMask(bool enable);
 
+    std::string getLastError() const { return m_lastError; }
     // Rick here's a suggested group of calls for the UVBF test:
     // 1) For each led that is enabled (isLedEnabled()), turnOff() the LED
     // 2) When user select an LED (or all), call setStrobeEnable() for that LED.
@@ -161,7 +162,7 @@ private:
     mutable std::mutex m_mutex;
     bool m_initialized;
     LM3643::LedChannel m_ledChannel; 
-    
+    std::string m_lastError;
     struct  LedChannelInfo {
         const bool          isDefaultLedDriver;
         const bool          isDefaultI2cSwitchDriver;

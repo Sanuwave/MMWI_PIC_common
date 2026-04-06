@@ -39,9 +39,12 @@ private:
     bool is_open;
 
 public:
-    GPIO(unsigned int pin_number, Direction direction = Direction::INPUT, 
-         const std::string& chip = "/dev/gpiochip4");
-    
+    // Resolves the chip by label at construction time so the correct
+    // /dev/gpiochipN is used regardless of kernel enumeration order.
+    // Defaults to "pinctrl-rp1" which is the Pi 5 main 40-pin GPIO bank.
+    GPIO(unsigned int pin_number, Direction direction = Direction::INPUT,
+         const std::string& chip_label = "pinctrl-rp1");
+
     ~GPIO();
 
     // Delete copy constructor and assignment
@@ -54,7 +57,7 @@ public:
 
     void open();
     void close();
-    
+
     void write(Value value);
     Value read();
 
@@ -67,6 +70,11 @@ public:
 
     unsigned int get_pin() const;
     Direction get_direction() const;
+
+    // Scans /dev/gpiochip0..31 and returns the path of the chip whose
+    // kernel label matches the given string.  Throws std::runtime_error
+    // if no matching chip is found.
+    static std::string chipPathByLabel(const std::string& label);
 
     static constexpr uint8_t GPIO_I2C_RESET = 18;
 

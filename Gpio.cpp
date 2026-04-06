@@ -9,9 +9,31 @@
 
 namespace Gpio {
 
-GPIO::GPIO(unsigned int pin_number, Direction direction, const std::string& chip)
-    : chip_fd(-1), line_fd(-1), pin(pin_number), dir(direction), 
-      chip_path(chip), is_open(false) {
+// static
+std::string GPIO::chipPathByLabel(const std::string& label)
+{
+    // Scan /dev/gpiochip0 through /dev/gpiochip31 and return the path
+    // whose GPIO_GET_CHIPINFO_IOCTL label matches.
+    for (int i = 0; i < 32; ++i) {
+        std::string path = "/dev/gpiochip" + std::to_string(i);
+        int fd = ::open(path.c_str(), O_RDONLY);
+        if (fd < 0) continue;
+
+        struct gpiochip_info info;
+        memset(&info, 0, sizeof(info));
+        int rc = ioctl(fd, GPIO_GET_CHIPINFO_IOCTL, &info);
+        ::close(fd);
+
+        if (rc == 0 && label == info.label)
+            return path;
+    }
+    throw std::runtime_error("GPIO chip with label '" + label + "' not found");
+}
+
+GPIO::GPIO(unsigned int pin_number, Direction direction, const std::string& chip_label)
+    : chip_fd(-1), line_fd(-1), pin(pin_number), dir(direction),
+      chip_path(chipPathByLabel(chip_label)), is_open(false)
+{
     open();
 }
 
@@ -19,10 +41,11 @@ GPIO::~GPIO() {
     close();
 }
 
-GPIO::GPIO(GPIO&& other) noexcept 
-    : chip_fd(other.chip_fd), line_fd(other.line_fd), 
-      pin(other.pin), dir(other.dir), 
-      chip_path(std::move(other.chip_path)), is_open(other.is_open) {
+GPIO::GPIO(GPIO&& other) noexcept
+    : chip_fd(other.chip_fd), line_fd(other.line_fd),
+      pin(other.pin), dir(other.dir),
+      chip_path(std::move(other.chip_path)), is_open(other.is_open)
+{
     other.chip_fd = -1;
     other.line_fd = -1;
     other.is_open = false;
